@@ -480,13 +480,15 @@ const db = getFirestore();
 // Setup
 const lessons = collection(db, 'Lessons')
 var editable = false
+var imagesNum = 0
 
 getDocs(lessons).then(async (snapShot) => {
     let title = localStorage.getItem('title')
-    let i = 0
+    let i = 1
 
     snapShot.docs.forEach(async (d) => {
         let data = d.data()
+        imagesNum = data['Images']
 
         if (data['Title'] == localStorage.getItem('title')) {
             if (data['userName'] == localStorage.getItem('Username')) {
@@ -501,18 +503,21 @@ getDocs(lessons).then(async (snapShot) => {
                 for (let ref of data['content']) {
                     // ZAWG YOU HAVE TO PATCH THIS NONSENSE
                     let key = Object.keys(ref)[0]
-
                     if (key == 'lesson-doc') {
                         newTextArea()
                         currentElem.innerHTML = ref[key]
+                        setCursor(currentElem.textContent.length)
                     } else if (key == 'MATH-FIELD') {
                         newLatex()
                         currentElem.innerHTML = ref[key]
                     } else {
-                        let storageRequestResponse = await supabasePublicClient.storage.from("demos26").getPublicUrl(title + i + ".png")
-                        newImage(storageRequestResponse['data']['publicUrl'])
-                        i+=1
+                        if (i <= imagesNum) {
+                            let storageRequestResponse = await supabasePublicClient.storage.from("demos26").getPublicUrl(ref[key] + ".png")
+                            newImage(storageRequestResponse['data']['publicUrl'])
+                            i+=1
+                        }
                     }
+                    console.log(currentElem)
                 }
             } else {
                 newTextArea()
@@ -526,10 +531,10 @@ getDocs(lessons).then(async (snapShot) => {
 })
 
 save.addEventListener('click', async () => {
-    let { data, error } = await supabasePublicClient.storage.emptyBucket("demos26")
-    console.log(error)
     let texts = []
-    let i = 0
+    let images = []
+    let files = []
+    let i = 1
 
     for (let elem of [...content.children]) {
         if (elem.getAttribute('class') == 'lesson-doc') {
@@ -543,13 +548,15 @@ save.addEventListener('click', async () => {
         } else {
             let srcvalue = [...elem.children][0].getAttribute('src')
             texts.push({
-                'img':srcvalue
+                'img':localStorage.getItem('title') + i
             })
-
-            await uploadImage(srcvalue, localStorage.getItem('title') + i)
+            images.push(localStorage.getItem('title') + i)
+            files.push(srcvalue)
             i+=1
         }
     }
+
+    await uploadImages(files,images)
 
     console.log(texts)
 
@@ -560,7 +567,8 @@ save.addEventListener('click', async () => {
             if (data['Title'] == localStorage.getItem('title')) {
 
                 updateDoc(doc(db, 'Lessons', data['Title']), {
-                    'content': texts
+                    'content': texts,
+                    'Images': i - 1
                 })
 
                 console.log('hihi')
@@ -581,8 +589,17 @@ async function blobURLtoFile(blobURL, fileName) {
 // PATCH CURSOR MOVEMENT
 // PATCH SPACING BETWEEN NEW TEXTAREA VS. NEW LINE
 
-async function uploadImage(url, name) {
-    let file = await blobURLtoFile(url, '')
+async function uploadImages(urls, names) {
+    /*for (let i = 0; i < imagesNum; i++) {
+        let {data, error} = await supabasePublicClient.storage.from("demos26").remove([localStorage.getItem('title') + i + 1 + ".png"])
+    }*/
+    for (let i = 0; i < urls.length; i++) {
+        let file = await blobURLtoFile(urls[i], '')
 
-    let {data, error} = await supabasePublicClient.storage.from("demos26").upload(name + ".png", file)
+        if (i + 1 > imagesNum) {
+            let {data, error} = await supabasePublicClient.storage.from("demos26").upload(names[i] + ".png", file)
+        } else {
+            let {data, error} = await supabasePublicClient.storage.from("demos26").update(names[i] + ".png", file)
+        }
+    }
 }
